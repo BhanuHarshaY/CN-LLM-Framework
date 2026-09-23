@@ -5,20 +5,17 @@ base_llm:
   temperature: 0.8
   max_tokens: 250
 
-# Cluster: vLLM serving Qwen3-8B on an Explorer GPU node (see runbook).
-# enable_thinking:false suppresses Qwen3's <think> reasoning block, which
-# would otherwise break JSON parsing since vLLM doesn't enforce JSON mode
-# the way Ollama's format="json" does.
+# Cluster: vLLM serving Qwen2.5-7B-Instruct on an Explorer GPU node (see runbook).
+# Switched from Qwen3-8B: the pinned vllm==0.6.6 / transformers==4.46.3 env
+# (required for this node's CUDA 12.8 driver) predates the qwen3 architecture
+# and can't load it. Qwen2.5 has been supported since transformers 4.37.
 judge_llm:
   provider: openai_compatible
-  model: Qwen/Qwen3-8B
+  model: Qwen/Qwen2.5-7B-Instruct
   api_base: http://localhost:8000/v1
   temperature: 0.0
   max_tokens: 1200
   timeout: 300
-  extra_body:
-    chat_template_kwargs:
-      enable_thinking: false
 
 # Local smoke-testing via Ollama (was used for development; cluster is now primary):
 # judge_llm:
@@ -60,13 +57,13 @@ evaluation:
   datasets:
     baseline:
       input_file: "../src/data/Multitarget-CONAN.csv"
-      output_file: "../results/multitarget_conan_scores_decimal_qwen3-8b.csv"
-      summary_file: "../results/multitarget_conan_evaluation_summary_decimal_qwen3-8b.csv"
+      output_file: "../results/multitarget_conan_scores_decimal_qwen2.5-7b.csv"
+      summary_file: "../results/multitarget_conan_evaluation_summary_decimal_qwen2.5-7b.csv"
       counter_narrative_column: COUNTER_NARRATIVE
     enhanced:
       input_file: "../src/data/Generate_CN.csv"
-      output_file: "../results/generate_cn_scores_decimal_qwen3-8b.csv"
-      summary_file: "../results/generate_cn_evaluation_summary_decimal_qwen3-8b.csv"
+      output_file: "../results/generate_cn_scores_decimal_qwen2.5-7b.csv"
+      summary_file: "../results/generate_cn_evaluation_summary_decimal_qwen2.5-7b.csv"
       counter_narrative_column: GENERATED_COUNTER_NARRATIVE
 
 output:
