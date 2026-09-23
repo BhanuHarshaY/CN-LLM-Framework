@@ -1,0 +1,11 @@
+ollama
+pandas
+PyYAML
+torch
+transformers
+sentence-transformers
+sentencepiece
+accelerate
+detoxify
+bert-score
+scikit-learn
