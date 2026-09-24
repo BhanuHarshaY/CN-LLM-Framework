@@ -8,6 +8,7 @@ The default model supports multilingual NLI-style classification.
 from functools import lru_cache
 from typing import Iterable, List
 
+import torch
 from transformers import pipeline
 
 
@@ -18,6 +19,14 @@ def clamp01(value: float) -> float:
     return float(max(0.0, min(1.0, value)))
 
 
+def _pipeline_device():
+    if torch.cuda.is_available():
+        return 0
+    if torch.backends.mps.is_available():
+        return "mps"
+    return -1
+
+
 @lru_cache(maxsize=2)
 def get_zero_shot_classifier(
     model_name: str = DEFAULT_ZERO_SHOT_MODEL,
@@ -25,6 +34,7 @@ def get_zero_shot_classifier(
     return pipeline(
         task="zero-shot-classification",
         model=model_name,
+        device=_pipeline_device(),
     )
 
 

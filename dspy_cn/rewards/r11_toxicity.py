@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Dict
 
+import torch
 from detoxify import Detoxify
 
 
@@ -10,7 +11,8 @@ def get_detoxify_model():
     Loads one shared Detoxify model for the entire process.
     """
 
-    return Detoxify("original")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    return Detoxify("original", device=device)
 
 
 def analyze_toxicity(
