@@ -1,11 +1,10 @@
 import argparse
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 import pandas as pd
 
 from .model_config import ModelConfig, load_config, resolve_package_path
-from .standalone_evaluator import StandaloneCounterNarrativeEvaluator
 from .rewards.distinct2 import Distinct2Score
 
 SCORE_METRICS = ("PRS", "QS", "SAFE", "EMP", "CON", "PERS", "SPEC", "FLU", "TOX")
@@ -17,7 +16,7 @@ def make_batches(dataframe: pd.DataFrame, batch_size: int) -> Iterable[Tuple[int
         yield start, dataframe.iloc[start:start + batch_size]
 
 
-def flatten_evaluation(row: pd.Series, evaluation: Dict[str, Any], error: str = "") -> Dict[str, Any]:
+def flatten_full_evaluation(row: pd.Series, evaluation: Dict[str, Any], error: str = "") -> Dict[str, Any]:
     output = row.to_dict()
     llm = evaluation["llm_judge"]
     scores = llm["scores"]
@@ -36,6 +35,22 @@ def flatten_evaluation(row: pd.Series, evaluation: Dict[str, Any], error: str = 
         "COMBINED_REWARD_SCORE": reward["combined_reward_score"],
         "REWARD_PERCENTAGE": final["reward_percentage"],
         "FINAL_SCORE_PERCENTAGE": final["final_score_percentage"],
+        "ERROR": error,
+    })
+    return output
+
+
+def flatten_llm_only(row: pd.Series, llm_result: Dict[str, Any], error: str = "") -> Dict[str, Any]:
+    output = row.to_dict()
+    scores = llm_result["scores"]
+
+    output.update({
+        "JUDGE_PROVIDER": llm_result["provider"],
+        "JUDGE_MODEL": llm_result["model"],
+        **{f"LLM_{name}": scores[name] for name in SCORE_METRICS},
+        "LLM_TOTAL": scores["total"],
+        "LLM_MAX_SCORE": scores["max_score"],
+        "LLM_PERCENTAGE": scores["percentage"],
         "ERROR": error,
     })
     return output
@@ -75,7 +90,7 @@ def load_existing_results(output_file: Path) -> Dict[int, Dict[str, Any]]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Score counter-narratives with the decimal (0.0-5.0) LLM-as-judge + reward-function pipeline."
+        description="Score counter-narratives with the decimal (0.0-5.0) LLM-as-judge, optionally plus reward functions."
     )
     parser.add_argument(
         "--dataset",
@@ -85,6 +100,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default=None, help="Path to config.yaml (defaults to dspy_cn/config.yaml)")
     parser.add_argument("--model", default=None, help="Override judge_llm.model from config.yaml")
     parser.add_argument("--max-rows", type=int, default=None, help="Override evaluation.max_rows for a smoke test")
+    parser.add_argument(
+        "--llm-only",
+        action="store_true",
+        help=(
+            "Skip the local reward functions and only run the LLM judge's 9 decimal metrics. "
+            "No torch/transformers/detoxify import at all, so no venv build needed -- just "
+            "pandas/PyYAML/openai (already present in the base anaconda module). Keeps every "
+            "batch back-to-back against the judge with no CPU-bound gap in between, which is "
+            "both faster and avoids leaving the GPU idle between batches."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -125,17 +151,35 @@ def main() -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     summary_file.parent.mkdir(parents=True, exist_ok=True)
 
-    evaluator = StandaloneCounterNarrativeEvaluator(
-        judge_config=judge_config,
-        llm_weight=float(eval_config.get("llm_weight", 0.5)),
-        reward_weight=float(eval_config.get("reward_weight", 0.5)),
-    )
+    score_batch_fn: Callable[[List[str]], List[Dict[str, Any]]]
+    score_one_fn: Callable[[str], Dict[str, Any]]
+    flatten_fn: Callable[..., Dict[str, Any]]
+
+    if args.llm_only:
+        from .llm_judge import CounterNarrativeJudge
+
+        judge = CounterNarrativeJudge(config=judge_config)
+        score_batch_fn = judge.score_batch
+        score_one_fn = judge.score
+        flatten_fn = flatten_llm_only
+    else:
+        from .standalone_evaluator import StandaloneCounterNarrativeEvaluator
+
+        evaluator = StandaloneCounterNarrativeEvaluator(
+            judge_config=judge_config,
+            llm_weight=float(eval_config.get("llm_weight", 0.5)),
+            reward_weight=float(eval_config.get("reward_weight", 0.5)),
+        )
+        score_batch_fn = evaluator.score_batch
+        score_one_fn = evaluator.score
+        flatten_fn = flatten_full_evaluation
 
     results: Dict[int, Dict[str, Any]] = load_existing_results(output_file)
     if results:
         print(f"Resuming from checkpoint: {len(results)}/{len(dataframe)} rows already scored in {output_file}")
 
     print(f"Dataset: {args.dataset} ({input_file})")
+    print(f"Mode: {'LLM judge only' if args.llm_only else 'LLM judge + reward functions'}")
     print(f"Rows to evaluate: {len(dataframe)}")
     print(f"Judge: {judge_config.provider}/{judge_config.model}")
     print(f"Batch size: {batch_size}")
@@ -166,17 +210,17 @@ def main() -> None:
 
         print(f"Batch {batch_number}/{total_batches}: rows {batch_start + 1}-{batch_start + len(batch_df)}")
         try:
-            evaluations = evaluator.score_batch(valid_texts)
+            evaluations = score_batch_fn(valid_texts)
             for position, row, evaluation in zip(valid_positions, valid_rows, evaluations):
-                results[position] = flatten_evaluation(row, evaluation)
+                results[position] = flatten_fn(row, evaluation)
         except Exception as batch_exc:
             batch_failures += 1
             print(f"[WARN] Batch failed; using row fallback: {batch_exc}")
             for position, row, text in zip(valid_positions, valid_rows, valid_texts):
                 try:
-                    results[position] = flatten_evaluation(
+                    results[position] = flatten_fn(
                         row,
-                        evaluator.score(text),
+                        score_one_fn(text),
                         error="Batch failed; single-row fallback succeeded.",
                     )
                 except Exception as row_exc:
@@ -196,6 +240,7 @@ def main() -> None:
         "judge_provider": judge_config.provider,
         "judge_model": judge_config.model,
         "batch_size": batch_size,
+        "llm_only": args.llm_only,
         "dataset_distinct2": Distinct2Score().score_batch(texts),
         "batch_failures": batch_failures,
     }]).to_csv(summary_file, index=False)
