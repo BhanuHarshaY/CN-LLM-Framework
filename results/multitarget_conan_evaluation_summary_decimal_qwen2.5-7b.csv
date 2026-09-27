@@ -1,0 +1,2 @@
+dataset,input_file,rows,judge_provider,judge_model,batch_size,llm_only,dataset_distinct2,batch_failures
+baseline,/home/yanamadala.b/CN-LLM-Framework/dspy_cn/../src/data/Multitarget-CONAN.csv,5003,openai_compatible,Qwen/Qwen2.5-7B-Instruct,8,True,0.41538500348971164,0
