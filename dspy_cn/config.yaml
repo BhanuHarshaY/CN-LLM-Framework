@@ -5,17 +5,30 @@ base_llm:
   temperature: 0.8
   max_tokens: 250
 
+# Mistral's hosted API -- Ministral 3 8B (ministral-8b-2512). Hosted API
+# instead of self-hosting: this model is too recent (Dec 2025) to trust
+# against the pinned/older vLLM+transformers versions we fought with for
+# Qwen3, and the hosted cost here is negligible (~$0.15/M tokens both ways).
+judge_llm:
+  provider: openai_compatible
+  model: ministral-8b-2512
+  api_base: https://api.mistral.ai/v1
+  api_key_env: MISTRAL_API_KEY
+  temperature: 0.0
+  max_tokens: 1200
+  timeout: 300
+
 # Cluster: vLLM serving Qwen2.5-7B-Instruct on an Explorer GPU node (see runbook).
 # Switched from Qwen3-8B: the pinned vllm==0.6.6 / transformers==4.46.3 env
 # (required for this node's CUDA 12.8 driver) predates the qwen3 architecture
 # and can't load it. Qwen2.5 has been supported since transformers 4.37.
-judge_llm:
-  provider: openai_compatible
-  model: Qwen/Qwen2.5-7B-Instruct
-  api_base: http://localhost:8000/v1
-  temperature: 0.0
-  max_tokens: 1200
-  timeout: 300
+# judge_llm:
+#   provider: openai_compatible
+#   model: Qwen/Qwen2.5-7B-Instruct
+#   api_base: http://localhost:8000/v1
+#   temperature: 0.0
+#   max_tokens: 1200
+#   timeout: 300
 
 # Local smoke-testing via Ollama (was used for development; cluster is now primary):
 # judge_llm:
@@ -57,13 +70,13 @@ evaluation:
   datasets:
     baseline:
       input_file: "../src/data/Multitarget-CONAN.csv"
-      output_file: "../results/multitarget_conan_scores_decimal_qwen2.5-7b.csv"
-      summary_file: "../results/multitarget_conan_evaluation_summary_decimal_qwen2.5-7b.csv"
+      output_file: "../results/multitarget_conan_scores_decimal_ministral-8b.csv"
+      summary_file: "../results/multitarget_conan_evaluation_summary_decimal_ministral-8b.csv"
       counter_narrative_column: COUNTER_NARRATIVE
     enhanced:
       input_file: "../src/data/Generate_CN.csv"
-      output_file: "../results/generate_cn_scores_decimal_qwen2.5-7b.csv"
-      summary_file: "../results/generate_cn_evaluation_summary_decimal_qwen2.5-7b.csv"
+      output_file: "../results/generate_cn_scores_decimal_ministral-8b.csv"
+      summary_file: "../results/generate_cn_evaluation_summary_decimal_ministral-8b.csv"
       counter_narrative_column: GENERATED_COUNTER_NARRATIVE
 
 output:

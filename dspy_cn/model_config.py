@@ -6,9 +6,12 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 import yaml
+from dotenv import load_dotenv
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = PACKAGE_DIR / "config.yaml"
+
+load_dotenv(PACKAGE_DIR.parent / ".env")
 
 
 @dataclass(frozen=True)
