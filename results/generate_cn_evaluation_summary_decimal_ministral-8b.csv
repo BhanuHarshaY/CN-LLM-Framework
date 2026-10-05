@@ -1,0 +1,2 @@
+dataset,input_file,rows,judge_provider,judge_model,batch_size,llm_only,dataset_distinct2,batch_failures
+enhanced,/Users/harsha/Desktop/Insight X/task2/CN-LLM-Eval/dspy_cn/../src/data/Generate_CN.csv,3313,openai_compatible,ministral-8b-2512,8,True,0.24972455509262975,0
